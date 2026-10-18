@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m unittest discover -s tests -v
+      - name: testguard on clean examples (must be clean)
+        run: |
+          python -m testguard tests/fixtures/py_clean.py \
+            tests/fixtures/js_clean.test.js examples/clean-demo
+      - name: testguard must catch the cheating fixture
+        run: |
+          if python -m testguard tests/fixtures/py_cheating.py; then
+            echo "expected testguard to flag the cheating fixture" >&2
+            exit 1
+          fi
