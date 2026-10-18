@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "testguard"
+version = "0.1.0"
+description = "Catch tests that lie: fake passes, retry loops, swallowed assertions, deleted tests"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "techdevfun"}]
+keywords = ["testing", "ci", "ai-agents", "code-quality"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Testing",
+]
+
+[project.scripts]
+testguard = "testguard.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["testguard*"]
