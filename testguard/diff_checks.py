@@ -13,7 +13,7 @@ import re
 from .findings import Finding
 
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
-_TEST_DEF_RE = re.compile(r"^\s*def\s+(test\w*)\s*\(|^\s*(test|it)\s*\(")
+_TEST_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+(test\w*)\s*\(|^\s*(test|it)\s*\(")
 _ASSERT_RE = re.compile(r"\bassert\b|\bexpect\s*\(")
 _SKIP_RE = re.compile(r"@pytest\.mark\.skip|pytest\.skip|unittest\.skip"
                       r"|\.skip\s*\(|\bxit\s*\(|\bxdescribe\s*\(")
