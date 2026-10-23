@@ -95,6 +95,16 @@ class DiffChecksTests(unittest.TestCase):
                 "     x = 1\n-    assert x == 1\n+    assert x == 2\n")
         self.assertEqual(analyze_diff(diff), [])
 
+    def test_deleted_async_test_is_flagged(self):
+        diff = ("diff --git a/tests/test_async.py b/tests/test_async.py\n"
+                "--- a/tests/test_async.py\n+++ b/tests/test_async.py\n"
+                "@@ -1,3 +1,2 @@ async def test_flaky():\n"
+                "-async def test_flaky():\n"
+                "-    assert check() == 1\n"
+                "+    pass\n")
+        self.assertIn("deleted-test",
+                      {f.check_id for f in analyze_diff(diff)})
+
 
 class CliTests(unittest.TestCase):
     def _run(self, *args):
