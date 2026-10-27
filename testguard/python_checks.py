@@ -163,6 +163,30 @@ def _check_test_function(
                                         "Assertion is a constant truthy value "
                                         "and can never fail.",
                                         ast.unparse(a)[:120]))
+        # unittest-style assertions escape the check above: they are
+        # calls, not `assert` statements, so assertTrue(True) and
+        # assertEqual(1, 1) used to pass clean. Same rule, same check id.
+        for call in unittest_asserts:
+            attr = call.func.attr if isinstance(call.func, ast.Attribute) else ""
+            args = call.args
+            fake = False
+            if attr == "assertTrue" and args and _is_constant_truthy(args[0]):
+                fake = True
+            elif attr == "assertFalse" and args and isinstance(args[0], ast.Constant) \
+                    and args[0].value is False:
+                fake = True
+            elif attr in ("assertEqual", "assertIs") and len(args) >= 2 \
+                    and isinstance(args[0], ast.Constant) \
+                    and isinstance(args[1], ast.Constant) \
+                    and type(args[0].value) is type(args[1].value) \
+                    and args[0].value == args[1].value:
+                fake = True
+            if fake:
+                findings.append(Finding(path, call.lineno, "fake-pass", "high",
+                                        "Assertion compares constants / a "
+                                        "constant truthy value and can never "
+                                        "fail.",
+                                        ast.unparse(call)[:120]))
 
     # --- hardcoded sleep --------------------------------------------------
     for node in ast.walk(func):
