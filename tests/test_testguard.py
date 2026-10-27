@@ -56,6 +56,30 @@ class PythonChecksTests(unittest.TestCase):
             _check_ids(scan_text(
                 "t.py", "def test_x():\n    self.assertEqual(add(2, 3), 5)\n")))
 
+    def test_swallowed_assert_ignores_unrelated_except_type(self):
+        # Regression: except ValueError cannot swallow AssertionError,
+        # so it must not be flagged — only handlers that can catch
+        # AssertionError (bare, AssertionError, Exception, or a tuple
+        # containing one) count as swallowing.
+        for handler, flagged in (
+            ("ValueError", False),
+            ("(ValueError, TypeError)", False),
+            ("AssertionError", True),
+            ("", True),
+            ("Exception", True),
+            ("(ValueError, AssertionError)", True),
+        ):
+            code = (f"def test_x():\n"
+                    "    try:\n"
+                    "        assert f() == 1\n"
+                    f"    except {handler}:\n"
+                    "        pass\n")
+            found = _check_ids(scan_text("t.py", code))
+            if flagged:
+                self.assertIn("swallowed-assert", found, handler)
+            else:
+                self.assertNotIn("swallowed-assert", found, handler)
+
     def test_unparseable_file_reports_parse_error(self):
         findings = scan_text("bad.py", "def test_broken(:\n")
         self.assertEqual(_check_ids(findings), {"parse-error"})
