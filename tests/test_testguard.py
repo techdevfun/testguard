@@ -41,6 +41,21 @@ class PythonChecksTests(unittest.TestCase):
         findings = scan_text("t.py", "def test_real():\n    assert add(2, 3) == 5\n")
         self.assertEqual(_check_ids(findings), set())
 
+    def test_unittest_constant_assertions_are_fake_pass(self):
+        # Regression: unittest-style constant assertions are calls, not
+        # `assert` statements, and used to escape the fake-pass check.
+        for src in (
+            "def test_x():\n    self.assertTrue(True)\n",
+            "def test_x():\n    self.assertFalse(False)\n",
+            "def test_x():\n    self.assertEqual(1, 1)\n",
+        ):
+            self.assertIn("fake-pass", _check_ids(scan_text("t.py", src)), src)
+        # A real value assertion stays clean.
+        self.assertNotIn(
+            "fake-pass",
+            _check_ids(scan_text(
+                "t.py", "def test_x():\n    self.assertEqual(add(2, 3), 5)\n")))
+
     def test_unparseable_file_reports_parse_error(self):
         findings = scan_text("bad.py", "def test_broken(:\n")
         self.assertEqual(_check_ids(findings), {"parse-error"})
