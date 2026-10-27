@@ -105,6 +105,32 @@ def _handler_swallows(handler: ast.ExceptHandler) -> bool:
     return all(isinstance(s, (ast.Pass, ast.Continue)) for s in body)
 
 
+def _handler_catches_assertion(handler: ast.ExceptHandler) -> bool:
+    """True when this handler can catch AssertionError.
+
+    An `except ValueError: pass` handler cannot swallow an assertion
+    failure, so flagging it as swallowed-assert was a false high:
+    AssertionError propagates past it and the test fails as it should.
+    Unknown exception names are treated as not catching it — the safe
+    direction for a high-severity gate.
+    """
+    return _exc_catches_assertion(handler.type)
+
+
+def _exc_catches_assertion(exc: ast.AST | None) -> bool:
+    """True when an except-clause expression can catch AssertionError."""
+    if exc is None:
+        return True  # bare except: catches everything
+    if isinstance(exc, ast.Tuple):
+        return any(_exc_catches_assertion(e) for e in exc.elts)
+    name = ""
+    if isinstance(exc, ast.Name):
+        name = exc.id
+    elif isinstance(exc, ast.Attribute):
+        name = exc.attr
+    return name in ("AssertionError", "Exception", "BaseException")
+
+
 def _check_test_function(
     path: str, func: ast.FunctionDef | ast.AsyncFunctionDef
 ) -> list[Finding]:
@@ -222,7 +248,8 @@ def _check_test_function(
     for node in ast.walk(func):
         if isinstance(node, ast.Try):
             if _contains_assert(node) and any(
-                _handler_swallows(h) for h in node.handlers
+                _handler_swallows(h) and _handler_catches_assertion(h)
+                for h in node.handlers
             ):
                 findings.append(Finding(path, node.lineno, "swallowed-assert",
                                         "high",
