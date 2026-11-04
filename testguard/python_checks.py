@@ -11,6 +11,13 @@ import ast
 
 from .findings import Finding
 
+# ast.TryStar (the `except*` / ExceptionGroup syntax) only exists on
+# Python 3.11+. testguard supports 3.9+, so build the "try-like"
+# tuple defensively instead of naming ast.TryStar directly.
+_TRY_TYPES: tuple[type, ...] = (ast.Try,)
+if hasattr(ast, "TryStar"):
+    _TRY_TYPES = (ast.Try, ast.TryStar)
+
 
 def _decorator_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
     names: list[str] = []
@@ -234,7 +241,7 @@ def _check_test_function(
         if isinstance(node, (ast.For, ast.While, ast.AsyncFor)):
             if not _contains_assert(node):
                 continue
-            has_try = any(isinstance(n, ast.Try) for n in ast.walk(node))
+            has_try = any(isinstance(n, _TRY_TYPES) for n in ast.walk(node))
             is_range_loop = isinstance(node, ast.For) and isinstance(node.iter, ast.Call) \
                 and getattr(node.iter.func, "id", "") == "range"
             if has_try or is_range_loop:
@@ -246,7 +253,7 @@ def _check_test_function(
 
     # --- swallowed assertions ---------------------------------------------
     for node in ast.walk(func):
-        if isinstance(node, ast.Try):
+        if isinstance(node, _TRY_TYPES):
             if _contains_assert(node) and any(
                 _handler_swallows(h) and _handler_catches_assertion(h)
                 for h in node.handlers
