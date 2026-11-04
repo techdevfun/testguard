@@ -1,5 +1,6 @@
 """Tests for Python AST checks, JS checks, diff checks and the CLI."""
 
+import ast
 import json
 import os
 import subprocess
@@ -83,6 +84,30 @@ class PythonChecksTests(unittest.TestCase):
     def test_unparseable_file_reports_parse_error(self):
         findings = scan_text("bad.py", "def test_broken(:\n")
         self.assertEqual(_check_ids(findings), {"parse-error"})
+
+    @unittest.skipUnless(hasattr(ast, "TryStar"),
+                         "except* requires Python 3.11+")
+    def test_except_star_swallowed_assert_is_flagged(self):
+        # Regression: `except*` (ExceptionGroup) is a different AST node
+        # (ast.TryStar) than `except`, so a swallowed assertion inside it
+        # used to pass clean.
+        code = ("def test_x():\n"
+                "    try:\n"
+                "        assert f() == 1\n"
+                "    except* AssertionError:\n"
+                "        pass\n")
+        self.assertIn("swallowed-assert", _check_ids(scan_text("t.py", code)))
+        # ...while an unrelated handler type still stays clean.
+        code = code.replace("AssertionError", "ValueError")
+        self.assertNotIn("swallowed-assert", _check_ids(scan_text("t.py", code)))
+        # And a retry loop around try/except* is still caught.
+        code = ("def test_y():\n"
+                "    while True:\n"
+                "        try:\n"
+                "            assert f() == 1\n"
+                "        except* AssertionError:\n"
+                "            pass\n")
+        self.assertIn("retry-loop", _check_ids(scan_text("t.py", code)))
 
 
 class JsChecksTests(unittest.TestCase):
