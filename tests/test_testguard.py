@@ -81,6 +81,32 @@ class PythonChecksTests(unittest.TestCase):
             else:
                 self.assertNotIn("swallowed-assert", found, handler)
 
+    def test_constant_comparison_assertions_are_fake_pass(self):
+        # Regression: `assert 1 == 1` compares two constants and can
+        # never fail, but only a bare constant (`assert True`) was
+        # flagged — compound constant expressions passed clean, as did
+        # the unittest equivalents.
+        for src in (
+            "def test_x():\n    assert 1 == 1\n",
+            'def test_x():\n    assert "a" == "a"\n',
+            "def test_x():\n    assert 1 != 2\n",
+            "def test_x():\n    assert 2 > 1\n",
+            "def test_x():\n    assert not False\n",
+            "def test_x():\n    assert -1\n",
+            "def test_x():\n    self.assertTrue(1 == 1)\n",
+            "def test_x():\n    self.assertFalse(1 == 2)\n",
+        ):
+            self.assertIn("fake-pass", _check_ids(scan_text("t.py", src)), src)
+        # A comparison that is always false is not a fake pass (it
+        # always fails instead), and a comparison involving a real
+        # value stays clean.
+        for src in (
+            "def test_x():\n    assert 1 == 2\n",
+            "def test_x():\n    assert x == 1\n",
+            "def test_x():\n    self.assertTrue(x == 1)\n",
+        ):
+            self.assertNotIn("fake-pass", _check_ids(scan_text("t.py", src)), src)
+
     def test_unparseable_file_reports_parse_error(self):
         findings = scan_text("bad.py", "def test_broken(:\n")
         self.assertEqual(_check_ids(findings), {"parse-error"})
