@@ -8,6 +8,7 @@ and a legitimate ``time.sleep`` in a *helper* (not in a test) is ignored.
 from __future__ import annotations
 
 import ast
+import operator
 
 from .findings import Finding
 
@@ -100,8 +101,66 @@ def _is_empty_body(body: list[ast.stmt]) -> bool:
     return len(stmts) == 0 or (len(stmts) == 1 and isinstance(stmts[0], ast.Pass))
 
 
+_CMP_OPS: dict[type, object] = {
+    ast.Eq: operator.eq,
+    ast.NotEq: operator.ne,
+    ast.Lt: operator.lt,
+    ast.LtE: operator.le,
+    ast.Gt: operator.gt,
+    ast.GtE: operator.ge,
+    ast.Is: operator.is_,
+    ast.IsNot: operator.is_not,
+    ast.In: lambda a, b: a in b,
+    ast.NotIn: lambda a, b: a not in b,
+}
+
+
+def _const_truth_value(node: ast.AST) -> bool | None:
+    """Statically known truth value of an expression, or None.
+
+    Only literal constants are evaluated — anything involving a name,
+    a call or a subscript is unknown, so real assertions are never
+    flagged. A comparison such as ``1 == 1`` is always true, so
+    ``assert 1 == 1`` can never fail, exactly like ``assert True``.
+    A comparison that is always *false* (``1 == 2``) returns False:
+    it always fails instead, so it is not a fake pass.
+    """
+    if isinstance(node, ast.Constant):
+        return bool(node.value)
+    if isinstance(node, ast.Compare):
+        values = [node.left, *node.comparators]
+        if not all(isinstance(v, ast.Constant) for v in values):
+            return None
+        try:
+            return all(
+                _CMP_OPS[type(op)](a.value, b.value)  # type: ignore[operator]
+                for op, a, b in zip(node.ops, values, values[1:])
+            )
+        except Exception:
+            return None
+    if isinstance(node, ast.UnaryOp):
+        if isinstance(node.op, ast.Not):
+            inner = _const_truth_value(node.operand)
+            return None if inner is None else not inner
+        if isinstance(node.op, (ast.USub, ast.UAdd, ast.Invert)) \
+                and isinstance(node.operand, ast.Constant):
+            try:
+                fn = {ast.USub: operator.neg, ast.UAdd: operator.pos,
+                      ast.Invert: operator.invert}[type(node.op)]
+                return bool(fn(node.operand.value))
+            except Exception:
+                return None
+        return None
+    if isinstance(node, ast.BoolOp):
+        values = [_const_truth_value(v) for v in node.values]
+        if any(v is None for v in values):
+            return None
+        return all(values) if isinstance(node.op, ast.And) else any(values)
+    return None
+
+
 def _is_constant_truthy(node: ast.AST) -> bool:
-    return isinstance(node, ast.Constant) and bool(node.value) is True
+    return _const_truth_value(node) is True
 
 
 def _handler_swallows(handler: ast.ExceptHandler) -> bool:
@@ -205,8 +264,8 @@ def _check_test_function(
             fake = False
             if attr == "assertTrue" and args and _is_constant_truthy(args[0]):
                 fake = True
-            elif attr == "assertFalse" and args and isinstance(args[0], ast.Constant) \
-                    and args[0].value is False:
+            elif attr == "assertFalse" and args \
+                    and _const_truth_value(args[0]) is False:
                 fake = True
             elif attr in ("assertEqual", "assertIs") and len(args) >= 2 \
                     and isinstance(args[0], ast.Constant) \
